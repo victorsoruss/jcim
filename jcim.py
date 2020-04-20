@@ -88,6 +88,35 @@ def create_temp(temp):
     return path
 
 
+def create_project_structure(path):
+    """
+    Creates the project structure for jcim and returns
+    a dictionary that contains absolute path for each
+    project folder
+
+    :param path: temp folder
+    :return: dictionary with paths
+    """
+
+    project_structure = {}
+    base_dir = ["extracted", "temp"]
+    sub_dir = ["audio", "frames"]
+    try:
+        dpath = os.path.join(path, "download")
+        os.mkdir(dpath)
+        project_structure['download'] = dpath
+
+        for ps_a in base_dir:
+            os.mkdir(os.path.join(path, ps_a))
+            for ps_b in sub_dir:
+                os.mkdir(os.path.join(path, ps_a, ps_b))
+                project_structure[ps_a + "_" + ps_b] = os.path.join(path, ps_a, ps_b)
+    except OSError as e:
+        send(e, "error")
+
+    return project_structure
+
+
 def download_video(url, path):
     """
     Download a video with youtube-dl
@@ -154,12 +183,11 @@ def get_video_path(video):
     :param video: file path or web URL
     :return: full path to video.
     """
-    global JCIM_TEMP
 
     if os.path.isfile(video):
         return os.path.abspath(video)
     else:
-        return download_video(video, JCIM_TEMP)
+        return download_video(video, JCIM_PROJECT['download'])
 
 
 def get_video_metadata(video, stream_type, key):
@@ -197,8 +225,8 @@ def copy_frame(in_frame, out_frame):
     :param out_frame: output frame
     :return: True or False if completed successfully
     """
-    src = JCIM_TEMP + "/frame{:07d}".format(in_frame + 1) + ".jpg"
-    dst = JCIM_TEMP + "/new_frame{:07d}".format(out_frame + 1) + ".jpg"
+    src = os.path.join(JCIM_PROJECT['extracted_frames'], "") + "frame{:07d}".format(in_frame + 1) + ".jpg"
+    dst = os.path.join(JCIM_PROJECT['temp_frames'], "") + "new_frame{:07d}".format(out_frame + 1) + ".jpg"
     if not os.path.isfile(src):
         return False
     copyfile(src, dst)
@@ -211,7 +239,6 @@ def fix_ffmpeg_behaviour():
     """
     if platform.system() == "Linux":
         os.system("stty sane")
-    
 
 
 parser = argparse.ArgumentParser(description=ARGUMENTS_HELP.get('description'))
@@ -232,6 +259,7 @@ QUIET = argument.quiet
 VERBOSE = argument.verbose
 TEMP = os.getcwd()
 JCIM_TEMP = create_temp(TEMP)
+JCIM_PROJECT = create_project_structure(JCIM_TEMP)
 
 INPUT_FILE = get_video_path(argument.input_file)
 
@@ -272,12 +300,12 @@ send("extracting resources from video", "info")
 try:
     a = ffmpeg \
         .input(INPUT_FILE) \
-        .output(os.path.join(JCIM_TEMP, "") + "audio.wav",
+        .output(os.path.join(JCIM_PROJECT['extracted_audio'], "audio.wav"),
                 **{'loglevel': 'error', 'nostats': '-hide_banner'}) \
         .run_async(quiet=QUIET)
     ffmpeg \
         .input(INPUT_FILE) \
-        .output(os.path.join(JCIM_TEMP, "") + "frame%07d.jpg",
+        .output(os.path.join(JCIM_PROJECT['extracted_frames'], "frame%07d.jpg"),
                 **{'qscale:v': FRAME_QUALITY, 'loglevel': 'error', 'stats': '-hide_banner'}) \
         .run(quiet=QUIET)
     a.wait()
@@ -291,7 +319,7 @@ send("successfully extracted", "info")
 
 send("started editing process", "info")
 # sample_rate and audio_data of extracted "audio.wav" file
-sample_rate, audio_data = wavfile.read(os.path.join(JCIM_TEMP, "") + "audio.wav")
+sample_rate, audio_data = wavfile.read(os.path.join(JCIM_PROJECT['extracted_audio'], "audio.wav"))
 
 audio_sample_count = audio_data.shape[0]
 # get the maximum volume of media
@@ -335,8 +363,8 @@ last_existing_frame = None
 for chunk in chunks:
     audio_chunk = audio_data[int(chunk[0] * samples_per_frame): int(chunk[1] * samples_per_frame)]
 
-    start_file = os.path.join(JCIM_TEMP, "") + "temp_start.wav"
-    end_file = os.path.join(JCIM_TEMP, "") + "temp_end.wav"
+    start_file = os.path.join(JCIM_PROJECT['temp_audio'], "temp_start.wav")
+    end_file = os.path.join(JCIM_PROJECT['temp_audio'], "temp_end.wav")
 
     wavfile.write(start_file, SAMPLE_RATE, audio_chunk)
     with WavReader(start_file) as reader:
@@ -371,12 +399,13 @@ for chunk in chunks:
             copy_frame(last_existing_frame, output_frame)
     output_pointer = end_pointer
 
-wavfile.write(os.path.join(JCIM_TEMP, "") + "new_audio.wav", SAMPLE_RATE, output_audio_data)
+wavfile.write(os.path.join(JCIM_PROJECT['temp_audio'], "new_audio.wav"), SAMPLE_RATE, output_audio_data)
 
 send("exporting the video", "info")
 try:
-    f_video = ffmpeg.input(os.path.join(JCIM_TEMP, "") + "new_frame*.jpg", pattern_type='glob', framerate=FRAME_RATE)
-    f_audio = ffmpeg.input(os.path.join(JCIM_TEMP, "") + "new_audio.wav")
+    f_video = ffmpeg.input(os.path.join(JCIM_PROJECT['temp_frames'], "") + "new_frame*.jpg",
+                           pattern_type='glob', framerate=FRAME_RATE)
+    f_audio = ffmpeg.input(os.path.join(JCIM_PROJECT['temp_audio'], "") + "new_audio.wav")
     out = ffmpeg.output(f_video, f_audio, OUTPUT_FILE, framerate=FRAME_RATE,
                         **{'loglevel': 'error', 'stats': '-hide_banner'})
     out.overwrite_output().run(quiet=QUIET)
