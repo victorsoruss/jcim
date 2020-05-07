@@ -1,4 +1,4 @@
-# jcim 1.0.1
+# jcim 1.0.2
 
 ### What's **jcim**? ###
 
