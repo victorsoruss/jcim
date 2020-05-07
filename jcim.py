@@ -403,8 +403,8 @@ wavfile.write(os.path.join(JCIM_PROJECT['temp_audio'], "new_audio.wav"), SAMPLE_
 
 send("exporting the video", "info")
 try:
-    f_video = ffmpeg.input(os.path.join(JCIM_PROJECT['temp_frames'], "") + "new_frame*.jpg",
-                           pattern_type='glob', framerate=FRAME_RATE)
+    f_video = ffmpeg.input(os.path.join(JCIM_PROJECT['temp_frames'], "") + "new_frame%07d.jpg",
+                           framerate=FRAME_RATE)
     f_audio = ffmpeg.input(os.path.join(JCIM_PROJECT['temp_audio'], "") + "new_audio.wav")
     out = ffmpeg.output(f_video, f_audio, OUTPUT_FILE, framerate=FRAME_RATE,
                         **{'loglevel': 'error', 'stats': '-hide_banner'})
